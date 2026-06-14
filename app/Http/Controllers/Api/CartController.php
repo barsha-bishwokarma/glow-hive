@@ -10,16 +10,20 @@ use Illuminate\Support\Facades\Validator;
 
 class CartController extends Controller
 {
-    // View cart
     public function index(Request $request)
     {
         $cart = Cart::with(['product' => function ($query) {
-            $query->select('id', 'name', 'image', 'price', 'sale_price');
+            $query->select('id', 'name', 'price', 'sale_price')
+                ->with(['images' => function ($q) {
+                    $q->where('is_primary', true)
+                        ->select('product_id', 'image');
+                }]);
         }])
             ->where('user_id', $request->user()->id)
             ->get();
 
         $total = $cart->sum(function ($item) {
+            if (!$item->product) return 0;
             $price = $item->product->sale_price ?? $item->product->price;
             return $price * $item->quantity;
         });
@@ -31,7 +35,6 @@ class CartController extends Controller
         ]);
     }
 
-    // Add to cart
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -65,15 +68,20 @@ class CartController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Product added to cart.',
-            'data'    => new CartResource($cart->load('product'))
+            'data'    => new CartResource($cart->load(['product' => function ($query) {
+                $query->select('id', 'name', 'price', 'sale_price')
+                    ->with(['images' => function ($q) {
+                        $q->where('is_primary', true)
+                            ->select('product_id', 'image');
+                    }]);
+            }]))
         ]);
     }
 
-    // Update quantity
     public function update(Request $request, $id)
     {
         $validator = Validator::make($request->all(), [
-            'quantity' => 'required|integer|min:1',
+            'action' => 'required|in:increase,decrease',
         ]);
 
         if ($validator->fails()) {
@@ -83,8 +91,7 @@ class CartController extends Controller
             ]);
         }
 
-        $cart = Cart::where('user_id', $request->user()->id)
-            ->find($id);
+        $cart = Cart::where('user_id', $request->user()->id)->find($id);
 
         if (!$cart) {
             return response()->json([
@@ -93,20 +100,41 @@ class CartController extends Controller
             ]);
         }
 
-        $cart->update(['quantity' => $request->quantity]);
+        if ($request->action === 'increase') {
+            $cart->update([
+                'quantity' => $cart->quantity + 1
+            ]);
+        }
+
+        if ($request->action === 'decrease') {
+            if ($cart->quantity <= 1) {
+                $cart->delete();
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Product removed from cart.'
+                ]);
+            }
+            $cart->update([
+                'quantity' => $cart->quantity - 1
+            ]);
+        }
 
         return response()->json([
             'success' => true,
             'message' => 'Cart updated.',
-            'data'    => new CartResource($cart->load('product'))
+            'data'    => new CartResource($cart->load(['product' => function ($query) {
+                $query->select('id', 'name', 'price', 'sale_price')
+                    ->with(['images' => function ($q) {
+                        $q->where('is_primary', true)
+                            ->select('product_id', 'image');
+                    }]);
+            }]))
         ]);
     }
 
-    // Remove from cart
     public function destroy(Request $request, $id)
     {
-        $cart = Cart::where('user_id', $request->user()->id)
-            ->find($id);
+        $cart = Cart::where('user_id', $request->user()->id)->find($id);
 
         if (!$cart) {
             return response()->json([
@@ -123,7 +151,6 @@ class CartController extends Controller
         ]);
     }
 
-    // Clear cart
     public function clear(Request $request)
     {
         Cart::where('user_id', $request->user()->id)->delete();
@@ -134,3 +161,4 @@ class CartController extends Controller
         ]);
     }
 }
+    

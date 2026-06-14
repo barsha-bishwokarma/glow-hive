@@ -8,6 +8,7 @@ use App\Models\Cart;
 use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Http;
 
 class OrderController extends Controller
 {
@@ -66,18 +67,49 @@ class OrderController extends Controller
         ]);
 
         $order->items()->createMany($orderItems);
-        
+
         foreach ($cart as $item) {
             $item->product->decrement('stock_quantity', $item->quantity);
         }
 
         Cart::whereIn('id', $request->cart_ids)->delete();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Order placed successfully.',
-            'data'    => new OrderResource($order->load('items.product'))
-        ]);
+        // Check payment method
+        if ($request->payment_method == 'cash_on_delivery') {
+            return response()->json([
+                'success' => true,
+                'message' => 'Order placed successfully. Pay on delivery.',
+                'data'    => new OrderResource($order->load('items.product'))
+            ]);
+        }
+
+        if ($request->payment_method == 'khalti') {
+
+            $khaltiResponse = Http::withHeaders([
+                "Authorization" => "Key " . env("KHALTI_SECRET"),
+            ])->post(env('KHALTI_BASE_URL') . '/epayment/initiate/', [
+                'return_url'    => env('APP_URL') . '/api/khalti/callback',
+                'website_url'   => env('APP_URL'),
+                'amount'        => $totalPrice * 100, // in paisa
+                'purchase_order_id'   => $order->id,
+                'purchase_order_name' => 'Glow Hive Order #' . $order->id,
+            ]);
+
+
+            if ($khaltiResponse->successful()) {
+                return response()->json([
+                    'success'     => true,
+                    'message'     => 'Proceed to Khalti payment.',
+                    'data'        => new OrderResource($order->load('items.product')),
+                    'payment_url' => $khaltiResponse['payment_url']
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Khalti payment initiation failed.'
+            ]);
+        }
     }
 
     // Customer views their orders
@@ -139,51 +171,6 @@ class OrderController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Order cancelled successfully.'
-        ]);
-    }
-
-    // Admin views all orders
-    public function index()
-    {
-        $orders = Order::with(['user:id,name,email', 'items.product'])
-            ->latest()
-            ->get();
-
-        return response()->json([
-            'success' => true,
-            'data'    => OrderResource::collection($orders)
-        ]);
-    }
-
-    // Admin updates order status
-    public function updateStatus(Request $request, $id)
-    {
-        $validator = Validator::make($request->all(), [
-            'status' => 'required|in:pending,processing,shipped,delivered,cancelled',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => $validator->errors()
-            ]);
-        }
-
-        $order = Order::find($id);
-
-        if (!$order) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Order not found.'
-            ]);
-        }
-
-        $order->update(['status' => $request->status]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Order status updated.',
-            'data'    => new OrderResource($order)
         ]);
     }
 }

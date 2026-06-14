@@ -23,7 +23,13 @@ class CheckoutController extends Controller
             ]);
         }
 
-        $cart = Cart::with('product')
+        $cart = Cart::with(['product' => function ($query) {
+                $query->select('id', 'name', 'price', 'sale_price', 'stock_quantity', 'is_active')
+                    ->with(['images' => function ($q) {
+                        $q->where('is_primary', true)
+                            ->select('product_id', 'image');
+                    }]);
+            }])
             ->where('user_id', $request->user()->id)
             ->whereIn('id', $request->cart_ids)
             ->get();
@@ -62,7 +68,7 @@ class CheckoutController extends Controller
                 'cart_id'      => $item->id,
                 'product_id'   => $item->product->id,
                 'product_name' => $item->product->name,
-                'image'        => $item->product->image,
+                'image'        => $item->product->images->first()->image ?? null,
                 'price'        => $price,
                 'quantity'     => $item->quantity,
                 'subtotal'     => $subtotal,

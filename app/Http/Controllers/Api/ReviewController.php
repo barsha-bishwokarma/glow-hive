@@ -17,7 +17,7 @@ class ReviewController extends Controller
             ->where('is_approved', true)
             ->with('user:id,name')
             ->latest()
-            ->get();
+            ->paginate(10);
 
         return response()->json([
             'success' => true,
@@ -73,7 +73,7 @@ class ReviewController extends Controller
             'success' => true,
             'message' => 'Review submitted successfully.',
             'data'    => new ReviewResource($review->load('user'))
-        ], 201);
+        ]);
     }
 
     public function update(Request $request, $id)
