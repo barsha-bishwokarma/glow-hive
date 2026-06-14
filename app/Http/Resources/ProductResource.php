@@ -13,16 +13,13 @@ class ProductResource extends JsonResource
      *
      * @return array<string, mixed>
      */
-    public function toArray(Request $request): array
+      public function toArray(Request $request): array
     {
         return [
             'id'             => $this->id,
             'name'           => $this->name,
             'slug'           => $this->slug,
             'description'    => $this->description,
-            'image'          => $this->image
-                ? asset('storage/' . $this->image)
-                : null,
             'price'          => $this->price,
             'sale_price'     => $this->sale_price,
             'stock_quantity' => $this->stock_quantity,
@@ -31,6 +28,13 @@ class ProductResource extends JsonResource
             'review_count'   => $this->review_count,
             'category'       => new CategoryResource($this->whenLoaded('category')),
             'brand'          => new BrandResource($this->whenLoaded('brand')),
+            'images'         => ProductImageResource::collection($this->whenLoaded('images')),
+            'primary_image'  => $this->whenLoaded('images', function () {
+                $primary = $this->images->where('is_primary', true)->first();
+                return $primary
+                    ? asset('storage/' . $primary->image)
+                    : null;
+            }),
         ];
 
         // return parent::toArray($request);

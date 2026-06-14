@@ -12,7 +12,7 @@ class ProductImageResource extends JsonResource
         return [
             'id'         => $this->id,
             'product_id' => $this->product_id,
-            'image'      => $this->image  // ← match migration column name
+            'image'      => $this->image  
                 ? asset('storage/' . $this->image)
                 : null,
             'is_primary' => $this->is_primary,
